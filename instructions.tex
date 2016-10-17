@@ -1,0 +1,98 @@
+\documentclass{article}
+
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily}
+
+\begin{document}
+
+\title{Connecting to the \texttt{frostsnow.net} IRC Service}
+
+\maketitle
+
+\section{Introduction}
+IRC (Internet Relay Chat) is a protocol that allows users to communicate over the Internet; specifically, it allows a \textit{client} (you) to communicate with a \textit{server} (\texttt{frostsnow.net}).  By itself, IRC sends information in \textit{plaintext}, meaning that anyone can view and even modify said information.  In order to prevent this, the IRC protocol can be encapsulated by the TLS (Transport Layer Security) protocol, which turns the plaintext into \textit{ciphertext} which can be neither read (giving \textit{confidentiality}) nor modified (giving \textit{integrity}).  In addition, TLS provides \textit{authenticity}, which verifies the server to the client (letting the client know that it is indeed communicating with the \texttt{frostsnow.net} server and not an imposter) and optionally verifies the client to the server (letting the server know that it is talking with a specific client).  Lastly, TLS provides \textit{authorization}, which verifies that the client is allowed to connect to the server.  This guide will show you how to use TLS to connect to the \texttt{frostsnow.net} IRC server.
+
+TLS uses a type of cryptography often referred to as "Public-Private Key" Cryptography (formally \textit{Asymmetric} Cryptography), because each party has a pair of keys.  A \textit{public} key is shared between parties while a \textit{private} key is kept secret.  In TLS, the public key is called a \textit{certificate} (more specifically, an \textit{X.509} certificate).  Therefore, in order to communicate with \texttt{frostsnow.net}, you will need three things: 1) the server's certificate, in order for you to verify that the computer you are talking to is in fact \texttt{frostsnow.net}; 2) your certificate, in order for the server to verify that it is talking to you; and 3) your private key, in order to verify to the server that you are the proper owner of the certificate.  Note that the server will use its private key in order to verify to you that it is the proper owner of its certificate.
+
+\section{Connecting}
+Connecting will involve two steps: 1) verifying the server to yourself, and 2) verifying yourself to the server.
+\subsection{Server Verification}
+Verifying the server to yourself will also consist of two steps: 1) obtaining a trusted copy of the server's certificate, and 2) configuring your client to use said certificate.
+
+Ideally, you would obtain a trusted certificate by either obtaining and verifying its GPG (GNU Privacy Guard) signature with a previously-verified public key or by physically obtaining a trusted copy from me.  Alas, the former is outside the scope of this document and the latter is rather cumbersome for both of us, so in most cases you'll simply connect to \texttt{frostsnow.net} over the Internet, obtain the certificate that is presented to you, and use that, but do keep in mind that if your first connection was to an imposter, all subsequent connections will be vulnerable to same imposter, thus you should make an attempt to verify the certificate if you are able to do so.
+
+In order to get the certificate, run the commands:
+\begin{lstlisting}
+    $ mkdir ~/irc
+    $ openssl s_client -connect frostsnow.net:6697 2> \
+        /dev/null | sed -n '/BEGIN CERT/,/END CERT/p' \
+	> ~/irc/cotss.pem
+\end{lstlisting}
+The \texttt{\$} denotes the beginning of a command.  The first command create a directory named \texttt{irc} in your home directory.  The second command should retrieve the certificate from \texttt{frostsnow.net}.  The \texttt{openssl} command consists of a series of subcommands; the \texttt{s\_client} command acts as a client to a server, \texttt{-connect frostsnow.net:6697} tells the client to connect to \texttt{frostsnow.net} on port \texttt{6697}, which is where the server's IRC process is hosted.  \texttt{2> /dev/null} redirects extra crap into a void from which it does not return, \texttt{| sed -n '/BEGIN CERT/,/END CERT/p'} filters the output of the command to only include the lines encoding the certificate, and \texttt{> \textasciitilde/irc/cotss.pem} takes the filtered output and places it in the file \texttt{cotss.pem} within the \texttt{irc} directory.  The backslash denotes that the command continues onto the next line; you may omit them and place the entire command on a single line.
+
+You'll want to verify that you have actually recieved a certificate (for example, there may be a network error).  You can run:
+\begin{lstlisting}
+	$ cat ~/irc/cotss.pem
+\end{lstlisting}
+\ldots which should show a text file beginning with \texttt{-----BEGIN CERTIFICATE-----}, followed by a bunch of text, and ending with \texttt{-----END CERTIFICATE-----}.  In order to actually view the contents of the certificate, run the command:
+\begin{lstlisting}
+	$ openssl x509 -in ~/irc/cotss.pem -text -noout
+\end{lstlisting}
+\ldots which should then show various information about the certificate.  For extra fun, perform the same steps except use \texttt{google.com:8080} instead of {\texttt{frostsnow.net:6697}.
+
+Now that you have a copy of the server's certificate, you need to tell your IRC client to use it as a \textit{Certificate Authority} (CA); Certificate Authorities determine which certificates are valid (roughly speaking).  This step of configuring your IRC client is client-specific, in other words, different clients will have different methods of configuration.  This guide will use the \texttt{irssi} client; if you are using another client, you will need to look at its documentation in order to figure out how to perform this step.  In order to connect using the certificate you've downloaded, launch the \texttt{irssi} program and connect with the command:
+\begin{lstlisting}
+    /connect -ssl_verify -ssl_cafile ~/irc/cotss.pem \
+        frostsnow.net 6697
+\end{lstlisting}
+This will instruct \texttt{irssi} to connect to \texttt{frostsnow.net}, port \texttt{6697} using the file \texttt{\textasciitilde/irc/cotss.pem} as a Certificate Authority, after which you will propmpty be disconnected from the server as you have not yet provided a valid client certificate, which is the topic of the next section.  Go ahead and type \texttt{/rmreconns} to prevent \texttt{irssi} from trying in vain to reconnect to the server.
+
+\subsection{Client Verification}
+Creating a client certificate is rather more involved than getting the server's certificate, in large part because you must both store a \textit{secret} key and you must also have your certificate \textit{signed} by the appropriate certificate authority.  In total, there are five steps: 1) Generating a private key, 2) Generating a certificate signing request, 3) Sending the certificate signing request, 4) Recieving the signed certificate, and 5) Configuring your client to use the signed certificate and private key.
+
+Generating the key is simple enough: the one trick is to make sure that no other user on the system has read permission on the key, as that would defeat the point of the key being \textit{secret} (note that even if you are the only real person that logs into your system, most GNU\textbackslash Linux systems are configured with multiple users for security purposes).  In order to generate the secret key, run the following three commands:
+\begin{lstlisting}
+    $ umask 0077
+    $ openssl genrsa -out ~/irc/key.pem 4096
+    $ umask 0022
+\end{lstlisting}
+The first command, \texttt{umask 0077} prevents any file created from being accessible in any way whatsoever to other users.  The second command generates an \textit{RSA} key of length 4096 bits.  The third command (optional) prevents any file created from being writable by other users.  As you may have guessed, this command will create the secret key for you in the location \texttt{\textasciitilde/irc/key.pem}; it is important to keep this file to yourself and never reveal it to anyone, as part of the magic of asymmetric cryptography relies on the fact that only you have access to this file (not even the server knows your secret key).
+
+Second, use the secret key to generate a \textit{certificate signing request} that will be sent to the appropriate certificate authority (you should know who this is).  The command is simple enough, but note that it will begin asking you for large amounts of beaurcratic bullshit that we don't care about; you should omit most of these fields by entering a ``\texttt{.}'' in them \textbf{except} the ``Common Name'' field, in which you should place your \textit{Erisian Holy Name} (think: ``nickname'').  Do not set a challenge password (leave that field blank).  The command itself is:
+\begin{lstlisting}
+    $ openssl req -key ~/irc/key.pem -sha512 -new \
+        -out ~/irc/csr.pem
+\end{lstlisting}
+This command uses the \texttt{req} subcommand in order to generate the certificate signing request; \texttt{-key \textasciitilde/irc/key.pem} uses the previously-generated key in generating the request, \texttt{-sha512} uses the SHA-512 hash in the requet, \texttt{-new} specifies that we are generating a new request, and \texttt{-out \textasciitilde/irc/csr.pem} specifies where the generated request is output.
+
+Thirdly, now that you have your certificate signing request, you must get it signed (obviously).  Ideally, this should be done in the same way as for validating the server certificate: either using GPG signatures with a previously-verified public key or by physically exchanging the files in person.  In practice, you'll probably just e-mail it like a lazy fuck.  You ought to know how to do that.
+
+Fourthly, you will obtain the signed certificate using whatever method you've employed.  It will probably be called \texttt{yournick.pem} or \texttt{cert.pem}.  There isn't really anything that needs to be done here besides placing the signed certificate at \texttt{\textasciitilde/irc/yournick.pem}, but it's worth viewing the contents of the certificate with:
+\begin{lstlisting}
+    $ openssl x509 -in ~/irc/yournick.pem -text -noout
+\end{lstlisting}
+Of interest is the ``Issuer'' (the person who signed the certificate) and the ``Subject'' (you).
+
+Lastly, you must configure your client to use both the signed certificate and your secret key.  As with setting up the server certificate, these instructions are specific to the \texttt{irssi} client and if you are using a different client then you will need to adapt the instructions to your client.  Also, the following command will assume that you have successfully obtained and verified the server's certificate as per the preceding section.  Now, in order to use your newly-obtained client certificate, start \texttt{irssi} and run the following command (without backslashes and all on one line):
+\begin{lstlisting}
+    /connect -ssl_verify -ssl_capath ~/irc/cotss.pem \
+        -ssl_cert ~/irc/yournick.pem \
+	-ssl_pkey ~/irc/key.pem \
+	frostsnow.net 6697
+\end{lstlisting}
+The additional arguments, \texttt{-ssl\_cert \textasciitilde/irc/yournick.pem} and \texttt{-ssl\_pkey \textasciitilde/irc/key.pem} specify your client certificate and your private key, respectively.  After running the command, you should now be connected to IRC!\footnote{If not then curse, take a deep breath, and carefully re-read the instructions.  Failing that, feel free to contact someone knowledgeable for help.}
+
+%-- Getting set up on IRC
+%- Autoconnect on startup
+%- Nick serv
+% - identify
+% - add certificate fingerprint
+%- Join channels
+%
+%-- How to invite friends
+% - Create a root CA
+% - Receive the cert signing request
+% - Sign the cert request
+% - Send the signed cert to friend
+
+\end{document}
