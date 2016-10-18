@@ -82,13 +82,55 @@ Lastly, you must configure your client to use both the signed certificate and yo
 \end{lstlisting}
 The additional arguments, \texttt{-ssl\_cert \textasciitilde/irc/yournick.pem} and \texttt{-ssl\_pkey \textasciitilde/irc/key.pem} specify your client certificate and your private key, respectively.  After running the command, you should now be connected to IRC!\footnote{If not then curse, take a deep breath, and carefully re-read the instructions.  Failing that, feel free to contact someone knowledgeable for help.}
 
-%-- Getting set up on IRC
-%- Autoconnect on startup
-%- Nick serv
-% - identify
-% - add certificate fingerprint
-%- Join channels
-%
+\section{Using \texttt{irssi}}
+This section provides a quick introduction for using the \texttt{irssi} client.  If you already know how to use \texttt{irssi} or some other IRC client then you may skip this section.
+
+\subsection{Autoconnect}
+Unless you are a fan of circumlocution, you probably do not wish to re-type the preceding \texttt{/connect} command every time you connect to \texttt{frostsnow.net}, thus it makes sense to configure \texttt{irssi} to connect automatically on startup.  In order to do this it must first be understood that IRC consists of a \textit{network} of interconnected \textit{servers}.  Therefore, in order to set up autoconnect we must tell \texttt{irssi} both the network \textbf{and} the server that we are connecting to.  For \texttt{frostsnow.net}, which has only one server, this seems rather redundant, but remember that most IRC networks consist of multiple servers and thus \texttt{irssi} reflects this fact.  Start by running the command:
+\begin{lstlisting}
+    /network add cotss
+\end{lstlisting}
+\ldots which adds a network with the name \texttt{cotss}.  Next add the server to the \texttt{cotss} network:
+\begin{lstlisting}
+    /server add -auto -network cotss -ssl_verify \
+        -ssl_cafile ~/irc/cotss.pem \
+	-ssl_cert ~/irc/yournick.pem \
+	-ssl_pkey ~/irc/key.pem \
+	-port 6697 frostsnow.net
+\end{lstlisting}
+This mirrors the \texttt{/connect} command, except instead of connecting it is configuring \texttt{irssi} to automatically connect to the server with the given arguments on startup.  Save the configuration with:
+\begin{lstlisting}
+    /save
+\end{lstlisting}
+\ldots and then restart \texttt{irssi} to automatically connect!
+
+\subsection{Navigation}
+\texttt{irssi} is divided into \textit{windows}, which can contain either \textit{channels} or \textit{private messages}.  Windows are \textit{numbered}, with window number \texttt{1} holding status messages and subsequent windows numbered sequentially after that (\texttt{2}, \texttt{3}, \texttt{4}, \ldots).  You can join channels by running \texttt{/join <channelname>} where \texttt{<channelname>} is, obviously, the name of the channel that you wish to join; note that, in IRC, channels start with a \texttt{\#} symbol (which is \textbf{not} a Twatter hashtag).  Likewise, you may message users by typing \texttt{/msg <username>} where \texttt{<username>} is, obviously, the nickname of the user that you wish to message.  Both of these actions will open up a new window (\texttt{/join} will actually \textbf{activate} that window), and you can then navigate between windows by either typing \texttt{/window <number>} or by pressing \texttt{Alt+<number>} (depending on your terminal) where \texttt{<number>} is the number of the window that you wish to activate.  More information and options may be found by typing \texttt{/help window}.
+
+\section{NickServ}
+By default, anyone may use any nickname that is not currently in use after connecting to IRC.  In order to claim ownership of a nickname, one must \textit{register} it with \textit{services} by messaging the bot named \texttt{NickServ} and then \textit{identify} to that nickname on subsequent connections.  The easiest way to do this on \texttt{cotss} is to 1) register with \texttt{NickServ} and then 2) identify using your client certificate.  In order to register, run the following command while on the nick that you wish to register:
+\begin{lstlisting}
+    /msg NickServ register <your_password> \
+        <your_bogus_email>
+\end{lstlisting}
+\ldots where \texttt{<your\_password>} should be a \textbf{unique} password for your account (don't send me a password that you've previously used elsewhere, that's just stupid) and \texttt{<your\_bogus\_email>} is some gibberish (all e-mail functionality has been disabled for \texttt{cotss}).  After that, you may manually identify to \texttt{NickServ} on subsequent connections by running the command:
+\begin{lstlisting}
+    /msg NickServ identify <your_password>
+\end{lstlisting}
+\ldots but that's a pain, so the easier option is to add your client certificate's \textit{fingerprint}, which is a unique identifier for that certificate, to \texttt{NickServ}'s list of valid fingerprints for your account.  You can obtain your certificate's fingerprint by running the following command:
+\begin{lstlisting}
+    $ openssl x509 -noout -fingerprint \
+        -in ~/irc/yournick.pem \
+	| sed s/.*=// \
+	| sed s/\://g \
+	| sed y/ABCDEF/abcdef
+\end{lstlisting}
+\ldots then use the output of that command as input to the following \texttt{irssi} command:
+\begin{lstlisting}
+    /msg NickServ cert add <fingerprint>
+\end{lstlisting}
+\ldots which will add the fingerprint to \texttt{NickServ}'s list of valid client certificate fingerprints for your account.  More information about \texttt{NickServ}'s services may be found by running \texttt{/msg NickServ help}.
+
 %-- How to invite friends
 % - Create a root CA
 % - Receive the cert signing request
