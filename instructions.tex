@@ -131,10 +131,59 @@ By default, anyone may use any nickname that is not currently in use after conne
 \end{lstlisting}
 \ldots which will add the fingerprint to \texttt{NickServ}'s list of valid client certificate fingerprints for your account.  More information about \texttt{NickServ}'s services may be found by running \texttt{/msg NickServ help}.
 
-%-- How to invite friends
-% - Create a root CA
-% - Receive the cert signing request
-% - Sign the cert request
-% - Send the signed cert to friend
+\section{Inviting Friends}
+Depending on your client certificate's \textit{extensions}, you may be able to \textit{sign} additional client certificates, thereby inviting your friends to \texttt{cotss}.  The policy for invites is dubbed \textit{friend-of-friend}, meaning that, if you are a friend me, the server admin, you may also invite your friends to join (taking into consideration that they aren't dicks, obviously), thus those that may be invited are the "friend of a friend".  Sadly, the method for signing certificates is a pain-in-the-ass, mainly because you need to set up a directory as a \textit{Certificate Authority}, including an OpenSSL configuration file,  before you are able to sign certificates from that directory; this section of the guide will walk you through that process.
+
+\subsection{Viewing Certificate Extensions}
+First, you'll probably wish to confirm that you are able to validly sign certificates of your friends before embarking on this endeavor.  In order to do this, you must view the \textit{X509v3 extensions} of your client certificate, which may be done by running:
+\begin{lstlisting}
+    $ openssl x509 -in ~/irc/yournick.pem -text \
+        -noout | grep -A1 "Basic Constraints"
+\end{lstlisting}
+You should be familiar with the first part of this command by now; the second part, \texttt{grep -iA1 "Basic Constraints"}, acts as a filter to limit the input to what we're interested in\footnote{If you get no output, make sure you spelled "Basic Constraints" precisely, or try removing that part of the command and searching the output yourself.}.  The two fields (comma-separated) that we are interested in are the \texttt{CA} and \texttt{pathlen} fields: the first of field, \texttt{CA}, is a \textit{boolean} (either true or false) specifying whether or not one is a Certificate Authority and thus able to sign certificates (\texttt{TRUE} if one is able to sign certificates and \texttt{FALSE} if one is not able to sign certificates); the second field, \texttt{pathlen}, is an integer that specifies how many more Certificate Authorities you may create with your certificate, and thus ought to be either omitted or \texttt{0} (you may sign additional certificates, but the certificates that you sign are not also able to sign additional certificates).  The two valid combination are \texttt{CA:TRUE,pathlen:0}, thus you may invite people by signing additional certificates, and \texttt{CA:FALSE}, thus you may not invite people.
+
+\subsection{Creating a CA}
+You must set up a special directory for your Certificate Authority; we'll use \texttt{\textasciitilde /irc/ca}.  Run the following series of commands:
+\begin{lstlisting}
+    $ mkdir ~/irc/ca
+    $ cd ~/irc/ca
+    $ mkdir certs crl csr newcerts
+    $ umask 0077
+    $ mkdir private
+    $ umask 0022
+    $ touch index.txt
+    $ echo 1000 > serial
+    $ echo 1000 > crlnumber
+\end{lstlisting}
+You will also need to create an OpenSSL configuration file for your CA, please copy the file from TODO into \texttt{\textasciitilde /irc/ca/openssl.cnf}.  Your CA directory will expect your client certificate and private key to be in certain locations, you may either move them there (and then update your IRC client's configuration appropriately) or create a symbolic link to their actual locations; the following command does the latter:
+\begin{lstlisting}
+    $ cd ~/irc/ca
+    $ ln -s ../yournick.pem certs/cert.pem
+    $ ln -s ../key.pem private/key.pem
+\end{lstlisting}
+TODO: Explain the configuration file some.
+
+\subsection{Signing Friend's Certificates}
+In order to sign your friend's certificate, they must first create a \textit{certificate signing request} (csr), as explained earlier in this guide, and then send the signing request to you.  When you receive the signing request and place it in \texttt{\textasciitilde /irc/ca/csr/yourfriend.pem} (with \texttt{yourfriend.pem} replaced by the nick of your friend), you should first verify that it is of the appropriate key \textit{length} and has the correct \textit{Common Name} before signing it by running:
+\begin{lstlisting}
+    $ openssl req -in ~/irc/ca/csr/yourfriend.pem \
+        -text -noout
+\end{lstlisting}
+\ldots and making sure that the ``Public-Key'' reads \texttt{4096 bit} (and not, say, \texttt{2048 bit} or lower) and that the ``Subject'' line reads something akin to \texttt{Subject: CN=yourfriend}\footnote{Note that key lengths below \texttt{4096} \textit{may} be accepted by the server as-is, but are not supported and may break at any time, as weak crypto will be deprecated today and not tomorrow.}.
+
+Now that you've verified the certificate signing request, you may sign the certificate using your Certificate Authority by running the following commands:
+\begin{lstlisting}
+    $ cd ~/irc/ca
+    $ openssl ca -config openssl.cnf \
+        -extensions v3_fof \
+        -in csr/yourfriend.pem \
+        -out certs/yourfriend.pem
+\end{lstlisting}
+The \texttt{-extensions v3\_fof} tells OpenSSL to use the X509v3 extensions with the label \texttt{v3\_fof}, which is in the \texttt{openssl.cnf} file as specified by \texttt{-config openssl.cnf}.  The arguments which specify the input certificate signing request and the output client certificate should be self-explanatory.  You may wish to verify the output client certificate by running \texttt{openssl x509 -in certs/yourfriend.pem -text -noout}; the output certificate should have a long expiration time (for your and their convenience), and also have a 4096-bit length key and be signed with SHA-512 and not, say, SHA-256\footnote{Check the \texttt{Signature Algorithm} line in the certificate, and note that, although it may work with SHA-256 initially, weak crypto will be deprecated today and not tomorrow.} (your configuration file should guarantee this).
+
+Then all you need to do is send your friend their signed client certificate, and they will be able to connect!
+
+% Include OpenSSL CA configuration file
+% Explain some entries in the CA configuration file
 
 \end{document}
