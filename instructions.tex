@@ -155,13 +155,15 @@ You must set up a special directory for your Certificate Authority; we'll use \t
     $ echo 1000 > serial
     $ echo 1000 > crlnumber
 \end{lstlisting}
-You will also need to create an OpenSSL configuration file for your CA, please copy the file from Appendix \ref{appendix_a} into \texttt{\textasciitilde /irc/ca/openssl.cnf}.  Your CA directory will expect your client certificate and private key to be in certain locations, you may either move them there (and then update your IRC client's configuration appropriately) or create a symbolic link to their actual locations; the following command does the latter:
+You will also need to create an OpenSSL configuration file for your CA, please copy the file from Appendix \ref{appendix_a} into \texttt{\textasciitilde /irc/ca/openssl.cnf}.  The file is divided into square-bracket (\texttt{[]}) delimited \textit{sections}, of which a brief description is as follows: the \texttt{ca} section declares the default Certificate Authority section; the \texttt{ca\_default} section declares various attributes of a Certificate Authority; the \texttt{policy\_anything} section defines which fields of a certificate signing request must be specified in order for a CA to sign said request;  the \texttt{v3\_friend} section defines extensions that a signed certificate will have.
+
+Your CA directory will expect your client certificate and private key to be in certain locations, you may either move them there (and then update your IRC client's configuration appropriately) or create a symbolic link to their actual locations; the following command does the latter:
 \begin{lstlisting}
     $ cd ~/irc/ca
     $ ln -s ../yournick.pem certs/cert.pem
     $ ln -s ../key.pem private/key.pem
 \end{lstlisting}
-TODO: Explain the configuration file some.
+Your Certificate Authority should now be set up, but keep in mind that you will need to remember to manually specify the configuration file when you are using it, as is done in the following subsection.
 
 \subsection{Signing Friend's Certificates}
 In order to sign your friend's certificate, they must first create a \textit{certificate signing request} (csr), as explained earlier in this guide, and then send the signing request to you.  When you receive the signing request and place it in \texttt{\textasciitilde /irc/ca/csr/yourfriend.pem} (with \texttt{yourfriend.pem} replaced by the nick of your friend), you should first verify that it is of the appropriate key \textit{length} and has the correct \textit{Common Name} before signing it by running:
