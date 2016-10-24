@@ -155,7 +155,7 @@ You must set up a special directory for your Certificate Authority; we'll use \t
     $ echo 1000 > serial
     $ echo 1000 > crlnumber
 \end{lstlisting}
-You will also need to create an OpenSSL configuration file for your CA, please copy the file from TODO into \texttt{\textasciitilde /irc/ca/openssl.cnf}.  Your CA directory will expect your client certificate and private key to be in certain locations, you may either move them there (and then update your IRC client's configuration appropriately) or create a symbolic link to their actual locations; the following command does the latter:
+You will also need to create an OpenSSL configuration file for your CA, please copy the file from Appendix \ref{appendix_a} into \texttt{\textasciitilde /irc/ca/openssl.cnf}.  Your CA directory will expect your client certificate and private key to be in certain locations, you may either move them there (and then update your IRC client's configuration appropriately) or create a symbolic link to their actual locations; the following command does the latter:
 \begin{lstlisting}
     $ cd ~/irc/ca
     $ ln -s ../yournick.pem certs/cert.pem
@@ -183,7 +183,14 @@ The \texttt{-extensions v3\_fof} tells OpenSSL to use the X509v3 extensions with
 
 Then all you need to do is send your friend their signed client certificate, and they will be able to connect!
 
-% Include OpenSSL CA configuration file
+\pagebreak
+\appendix
+\section{OpenSSL CA Configuration File}
+\label{appendix_a}
+You may also find this file included in the repository containing these instructions\footnote{\texttt{https://github.com/clinew/frostsnow.net} at the time of this writing.}.
+\lstinputlisting[basicstyle=\scriptsize\ttfamily]{openssl.cnf}
+
 % Explain some entries in the CA configuration file
+% Actually test instructions.
 
 \end{document}

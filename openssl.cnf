@@ -1,0 +1,76 @@
+# OpenSSL configuration file for friends of frostsnow.net
+# This is used for signing of friend's certificate requests.
+
+[ ca ]
+default_ca	= friend		# The default ca section
+
+[ friend ]
+# Directory and file locations
+dir		= ~/irc/ca		# Where everything is kept
+certs		= $dir/certs		# Where the issued certs are kept
+crl_dir		= $dir/crl		# Where the issued crl are kept
+new_certs_dir	= $dir/newcerts		# default place for new certs.
+database	= $dir/index.txt	# database index file.
+serial		= $dir/serial 		# The current serial number
+RANDFILE	= $dir/private/.rand	# private random number file
+
+# Root key and cert.
+private_key	= $dir/private/key.pem  # The private key
+certificate	= $dir/certs/cert.pem 	# The CA certificate
+
+# Certificate revocation lists.
+crlnumber	= $dir/crlnumber	# the current crl number
+					# must be commented out to leave a V1 CRL
+crl		= $dir/crl/crl.pem 		# The current CRL
+crl_extensions	= crl_ext
+default_crl_days	= 30			# how long before next CRL
+
+# Use better hash.
+default_md 	= sha512
+
+name_opt 	= ca_default		# Subject Name options
+cert_opt 	= ca_default		# Certificate field options
+default_days 	= 7200
+preserve	= no			# keep passed DN ordering
+policy		= policy_anything
+
+x509_extensions	= v3_friend		# The extentions to add to the cert
+
+# For the 'anything' policy
+# At this point in time, you must list all acceptable 'object'
+# types.
+[ policy_anything ]
+countryName		= optional
+stateOrProvinceName	= optional
+localityName		= optional
+organizationName	= optional
+organizationalUnitName	= optional
+commonName		= supplied
+emailAddress		= optional
+
+[ req ]
+# Options for the 'req' tool.
+default_bits		= 4096
+distinguished_name	= req_distinguished_name
+string_mask		= utf8only
+
+# Use the better hash.
+default_md		= sha512
+
+[ req_distinguished_name ]
+countryName			= Country Name (2 letter code)
+stateOrProvinceName		= State or Province Name (full name)
+localityName			= Locality Name (eg, city)
+0.organizationName		= Organization Name (eg, company)
+organizationalUnitName		= Organizational Unit Name (eg, section)
+commonName			= Common Name (e.g. server FQDN or YOUR name)
+emailAddress			= Email Address
+
+[ v3_friend ]
+# Extensions for friends of friends.
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer
+basicConstraints = critical,CA:false
+
+[ crl_ext ]
+authorityKeyIdentifier=keyid:always
