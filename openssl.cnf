@@ -6,7 +6,7 @@ default_ca	= ca_default		# The default ca section
 
 [ ca_default ]
 # Directory and file locations
-dir		= ~/irc/ca		# Where everything is kept
+dir		= ./			# Where everything is kept
 certs		= $dir/certs		# Where the issued certs are kept
 crl_dir		= $dir/crl		# Where the issued crl are kept
 new_certs_dir	= $dir/newcerts		# default place for new certs.
