@@ -17,24 +17,26 @@ TLS uses a type of cryptography often referred to as ``Public-Private Key'' Cryp
 \section{Connecting}
 Connecting will involve two steps: 1) verifying the server to yourself, and 2) verifying yourself to the server.
 \subsection{Server Verification}
-Verifying the server to yourself will also consist of two steps: 1) obtaining a trusted copy of the server's certificate, and 2) configuring your client to use said certificate.
+Verifying the server to yourself will also consist of two steps: 1) obtaining a trusted copy of the server's root certificate, and 2) configuring your client to use said certificate.
 
-Ideally, you would obtain a trusted certificate by either obtaining and verifying its GPG (GNU Privacy Guard) signature with a previously-verified public key or by physically obtaining a trusted copy from me.  Alas, the former is outside the scope of this document and the latter is rather cumbersome for both of us, so in most cases you'll simply connect to \texttt{CotSS} over the Internet, obtain the certificate that is presented to you, and use that, but do keep in mind that if your first connection was to an imposter, all subsequent connections will be vulnerable to the same imposter, thus you should make an attempt to verify the certificate if you are able to do so.
+The best way to verify that you have a \emph{valid} copy of the server's root certificate (and can therefore trust it) is to get its \emph{fingerprint} in-person from someone whom you trust, then verify the fingerprint of the certificate which you obtain online against the trusted fingerprint.  You must either do this on your own in-person, or blindly trust your luck that no one has tampered with the root certificate; if you choose to blindly trust your luck, do keep in mind that if your root certificate is an imposter's, then all subsequent connections will be vulnerable to the same imposter, thus you should make an attempt to verify the certificate if you are able to do so.
 
 In order to get the certificate, run the commands:
 \begin{lstlisting}
     $ mkdir ~/irc
-    $ openssl s_client -connect frostsnow.net:6697 2> \
-        /dev/null | sed -n '/BEGIN CERT/,/END CERT/p' \
-	> ~/irc/cotss.pem
+    $ wget https://www.frostsnow.net/contact/cotss.pem
+    $ mv cotss.pem ~/irc
 \end{lstlisting}
-The \texttt{\$} denotes the beginning of a command.  The first command create a directory named \texttt{irc} in your home directory.  The second command should retrieve the certificate from \texttt{CotSS}.  The \texttt{openssl} command itself consists of a series of subcommands; the \texttt{s\_client} command acts as a client to a server, \texttt{-connect frostsnow.net:6697} tells the client to connect to \texttt{frostsnow.net} on port \texttt{6697}, which is where \texttt{CotSS} is located.  \texttt{2> /dev/null} redirects extra crap into a void from which it does not return, \texttt{| sed -n '/BEGIN CERT/,/END CERT/p'} filters the output of the command to only include the lines encoding the certificate, and \texttt{> \textasciitilde/irc/cotss.pem} takes the filtered output and places it in the file \texttt{cotss.pem} within the \texttt{irc} directory.  The backslash denotes that the command continues onto the next line; you may omit them and place the entire command on a single line.
+The \texttt{\$} denotes the beginning of a command.  The first command creates a directory named \texttt{irc} in your home directory.  The second command retrieves the certificate for CotSS from a website.  The final command moves the certificate to an expected location.
 
-You'll want to verify that you have actually recieved a certificate (for example, there may be a network error).  You can run:
+Now verify the root certificate by comparing its fingerprint against one you've received from a trusted source:
 \begin{lstlisting}
-	$ cat ~/irc/cotss.pem
+    $ openssl x509 -in ~/irc/cotss.pem -fingerprint \
+        -sha256 -noout
 \end{lstlisting}
-\ldots which should show a text file beginning with \texttt{-----BEGIN CERTIFICATE-----}, followed by a bunch of text, and ending with \texttt{-----END CERTIFICATE-----}.  In order to actually view the contents of the certificate, run the command:
+The \texttt{-in \textasciitilde/irc/cotss.pem} instructs the command to use the certificate which you just retrieved from the website.  \texttt{-fingerprint} tells the command to generate a fingerprint of the specified certificate.  \texttt{-sha256} makes the command use a more secure hash function than the default SHA-1.  Last, \texttt{-noout} prevents the command from redundantly printing the certificate.  If the fingerprint output by the command matches your trusted source, then you have successfully validated it!
+
+For the curious, in order to actually view the contents of the certificate, run the command:
 \begin{lstlisting}
 	$ openssl x509 -in ~/irc/cotss.pem -text -noout
 \end{lstlisting}
@@ -48,39 +50,42 @@ Now that you have a copy of the server's certificate, you need to tell your IRC 
 This will instruct \texttt{irssi} to connect to \texttt{frostsnow.net}, port \texttt{6697} (again, where \texttt{CotSS} is located) using the file \texttt{\textasciitilde/irc/cotss.pem} as a Certificate Authority, after which you will propmpty be disconnected from the server as you have not yet provided a valid client certificate, which is the topic of the next section.  Go ahead and type \texttt{/rmreconns} to prevent \texttt{irssi} from trying in vain to reconnect to the server, then type \texttt{/exit} to quit \texttt{irssi}.
 
 \subsection{Client Verification}
-Creating a client certificate is rather more involved than getting the server's certificate, in large part because you must both store a \textit{secret} key and you must also have your certificate \textit{signed} by the appropriate certificate authority.  In total, there are five steps: 1) Generating a private key, 2) Generating a certificate signing request, 3) Sending the certificate signing request, 4) Recieving the signed certificate, and 5) Configuring your client to use the signed certificate and private key.
+Creating a client certificate is more involved than getting the server's certificate because you must have your certificate \emph{signed} by the appropriate certificate authority.  While this can be done by hand, the \texttt{afrc} (Admin, Friend, Referrer Client) script exists in order to make the process easier and the instructions will thus make use of it.  You will need to: 1) initialize your AFR client, 2) send the certificate signing request, 3) receive the certificate signing request, and 4) configure your IRC client to use the signed certificate and private key.
 
-Generating the key is simple enough: the one trick is to make sure that no other user on the system has read permission on the key, as that would defeat the point of the key being \textit{secret} (note that even if you are the only real person that logs into your system, most GNU\textbackslash Linux systems are configured with multiple users for security purposes).  In order to generate the secret key, run the following three commands:
+Begin by installing the \texttt{afrc} utility.  Use the \texttt{git} command in order to clone the latest version of the utility's code repository:
 \begin{lstlisting}
-    $ umask 0077
-    $ openssl genrsa -out ~/irc/key.pem 4096
-    $ umask 0022
+    git clone https://github.com/clinew/afr.git
 \end{lstlisting}
-The first command, \texttt{umask 0077} prevents any file created from being accessible in any way whatsoever to other users (besides the system administrator, of course).  The second command generates an \textit{RSA} key of length 4096 bits.  The third command (optional) prevents any subsequent file created from being writable by other users (this command restores the \texttt{umask} defaults; the key will remain inaccessible).  As you may have guessed, this command will create the secret key for you in the location \texttt{\textasciitilde/irc/key.pem}; it is important to keep this file to yourself and never reveal it to anyone, as part of the magic of asymmetric cryptography relies on the fact that only you have access to this file (not even the server knows your secret key).
-
-Second, use the secret key to generate a \textit{certificate signing request} (CSR) that will be sent to the appropriate certificate authority (you should know who this is).  The CSR includes a ``Common Name'' (CN) field, in which you should place your \textit{Erisian Holy Name} (think: ``nickname'').  The command itself is:
+Then change directory into the repository and install the utility:
 \begin{lstlisting}
-    $ openssl req -key ~/irc/key.pem -sha512 -new \
-        -subj '/CN=yournickhere/' -out ~/irc/csr.pem
+    cd afr
+    sudo make install
 \end{lstlisting}
-This command uses the \texttt{req} subcommand in order to generate the certificate signing request; \texttt{-key \textasciitilde/irc/key.pem} uses the previously-generated key in generating the request, \texttt{-sha512} uses the SHA-512 hash in the requet, \texttt{-new} specifies that we are generating a new request, \texttt{-subj '/CN=yournickhere/'} allows you to specify your Common Name and \texttt{yournickhere} should (obviously) be replaced with your chosen nickname\footnote{This is easier than specifying or skipping each of the wonky fields interactively, which happens if you do not specify a \texttt{-subj} argument.}, and \texttt{-out \textasciitilde/irc/csr.pem} specifies where the generated request is output.
-
-Thirdly, now that you have your certificate signing request, you must get it signed (obviously).  Ideally, this should be done in the same way as for validating the server certificate: either using GPG signatures with a previously-verified public key or by physically exchanging the files in person.  In practice, you'll probably just e-mail the \texttt{\textasciitilde/irc/csr.pem} file to the person who invited you like a lazy fuck.  You ought to know how to do that.
-
-Fourthly, you will obtain the signed certificate using whatever method you've employed.  It will probably be called \texttt{yournick.pem} or \texttt{cert.pem}.  There isn't really anything that needs to be done here besides placing the signed certificate at \texttt{\textasciitilde/irc/yournick.pem}, but it's worth viewing the contents of the certificate with:
+The utility should now be installed!  Though you may need to configure your shell to include locally-installed utilities via:
 \begin{lstlisting}
-    $ openssl x509 -in ~/irc/yournick.pem -text -noout
+    export PATH=/usr/local/bin:$PATH
 \end{lstlisting}
-Of interest is the ``Issuer'' (the person who signed the certificate) and the ``Subject'' (you).
+if the following commands fail with \texttt{command not found}.
 
-Lastly, you must configure your client to use both the signed certificate and your secret key.  As with setting up the server certificate, these instructions are specific to the \texttt{irssi} client and if you are using a different client then you will need to adapt the instructions to your client.  Also, the following command will assume that you have successfully obtained and verified the server's certificate as per the preceding section.  Now, in order to use your newly-obtained client certificate, start \texttt{irssi} and run the following command (without backslashes and all on one line):
+With the command installed it is now time to initialize your client certificate infrastructure and generate a \emph{certificate signing request} (CSR).  Figure out what you want your \emph{Erisian Holy Name} (think: ``nickname'') to be and then run the following, replacing \texttt{NAME} with your desired name:
+\begin{lstlisting}
+    afrc init NAME
+\end{lstlisting}
+The certificate signing request must now be signed (obviously).  Ideally, this should be done in the same way as for validating the server certificate: either using GPG signatures with a previously-verified public key or by physically exchanging the files in person.  In practice, you'll probably just e-mail the \texttt{\textasciitilde/irc/csr.pem} file to the person who invited you like a lazy fuck.  You ought to know how to do that.
+
+The signer will then provide you with a signed certificate.  Assuming that the signed cert is located in a file named \texttt{cert.pem}, install the certificate by running:
+\begin{lstlisting}
+    afrc receive-client cert.pem
+\end{lstlisting}
+
+Lastly, you must configure your client to use both the signed certificate and your secret key.  As with setting up the server certificate, these instructions are specific to the \texttt{irssi} client and if you are using a different client then you will need to adapt the instructions to your client.  Also, the following command will assume that you have successfully obtained and verified the server's certificate as per the preceding section.  Now, in order to use your newly-obtained client certificate, start \texttt{irssi} and run the following command, replacing \texttt{USER} with your username (and without backslashes and all on one line):
 \begin{lstlisting}
     /connect -ssl_verify -ssl_cafile ~/irc/cotss.pem \
-        -ssl_cert ~/irc/yournick.pem \
-	-ssl_pkey ~/irc/key.pem \
+        -ssl_cert ~/.afrc/USER/certs/USER.pem \
+	-ssl_pkey ~/.afrc/USER/private/USER.pem \
 	frostsnow.net 6697
 \end{lstlisting}
-The additional arguments, \texttt{-ssl\_cert \textasciitilde/irc/yournick.pem} and \texttt{-ssl\_pkey \textasciitilde/irc/key.pem} specify your client certificate and your private key, respectively.  After running the command, you should now be connected to IRC!\footnote{If not then curse, take a deep breath, and carefully re-read the instructions.  Failing that, feel free to contact someone knowledgeable for help.}
+The additional arguments, \texttt{-ssl\_cert \textasciitilde/.afrc/USER/certs/USER.pem} and \texttt{-ssl\_pkey \textasciitilde/.afrc/USER/private/USER.pem} specify your client certificate and your private key, respectively.  After running the command, you should now be connected to IRC!\footnote{If not then curse, take a deep breath, and carefully re-read the instructions.  Failing that, feel free to contact someone knowledgeable for help.}
 
 \section{Using \texttt{irssi}}
 This section provides a quick introduction for using the \texttt{irssi} client.  If you already know how to use \texttt{irssi} or some other IRC client then you may skip this section.
@@ -94,8 +99,8 @@ Unless you are a fan of circumlocution, you probably do not wish to re-type the 
 \begin{lstlisting}
     /server add -auto -network cotss -ssl_verify \
         -ssl_cafile ~/irc/cotss.pem \
-	-ssl_cert ~/irc/yournick.pem \
-	-ssl_pkey ~/irc/key.pem \
+	-ssl_cert ~/.afrc/USER/certs/USER.pem \
+	-ssl_pkey ~/.afrc/USER/private/USER.pem \
 	frostsnow.net 6697
 \end{lstlisting}
 This mirrors the \texttt{/connect} command, except instead of connecting it is configuring \texttt{irssi} to automatically connect to the server with the given arguments on startup.  Save the configuration with:
@@ -126,89 +131,44 @@ By default, anyone may use any nickname that is not currently in use after conne
 More information about \texttt{NickServ}'s services may be found by running \texttt{/msg NickServ help}.
 
 \section{Inviting Friends}
-Depending on your client certificate's \textit{extensions}, you may be able to \textit{sign} additional client certificates, thereby inviting your friends to \texttt{cotss}.  The policy for invites is dubbed \textit{friend-of-friend}, meaning that, if you are a friend of me, the server admin, you may also invite your friends to join (taking into consideration that they aren't dicks, obviously), thus those that may be invited are the "friend of a friend".  Sadly, the method for signing certificates is a pain-in-the-ass, mainly because you need to set up a directory as a \textit{Certificate Authority}, including an OpenSSL configuration file, before you are able to sign certificates from that directory.  In addition, you must create and submit a \textit{Certificate Revocation List} (CRL) and send it to me, the server admin, before any of your friend's certificates will be accepted, though you will not need to update it as you invite friends unless you \textit{revoke}, a.k.a.\ ban, one of them.  This section of the guide will walk you through these processes.
+Depending on your relationship with me, the server admin, you may be able to \emph{sign} additional client certificates, thereby inviting your friends to \texttt{cotss}.  This certificate architecture is known as "Admin, Friend, Referred" based on the idea that there is a server admin, their friends, and those whom said friends have referred.  In order to do this you will need to request and receive a \emph{referrer} certificate from me and then use that certificate in order to supply a certificate revocation list (CRL) to me.  This process is extremely cumbersome on its own, but the \texttt{afrc} utility should make it much easier.
 
-\subsection{Viewing Certificate Extensions}
-First, you'll probably wish to confirm that you are able to validly sign certificates of your friends before embarking on this endeavor.  In order to do this, you must view the \textit{X509v3 extensions} of your client certificate, which may be done by running:
+\subsection{Obtaining a referrer certificate}
+Begin by requesting a referrer certificate:
 \begin{lstlisting}
-    $ openssl x509 -in ~/irc/yournick.pem -text \
-        -noout | grep -A1 "Basic Constraints"
+    afrc request-referrer
 \end{lstlisting}
-You should be familiar with the first part of this command by now; the second part, \texttt{grep -A1 "Basic Constraints"}, acts as a filter to limit the input to what we're interested in\footnote{If you get no output, make sure you spelled "Basic Constraints" precisely, or try removing that part of the command and searching the output yourself.}.  The two fields (comma-separated) that we are interested in are the \texttt{CA} and \texttt{pathlen} fields: the first field, \texttt{CA}, is a \textit{boolean} (either true or false) specifying whether or not one is a Certificate Authority and thus able to sign certificates (\texttt{TRUE} if one is able to sign certificates and \texttt{FALSE} if one is not able to sign certificates); the second field, \texttt{pathlen}, is an integer that specifies how many more Certificate Authorities you may create with your certificate, and thus ought to be either omitted (because you are not a Certificate Authority and thus unable to issue certificates) or \texttt{0} (you may sign additional certificates, but the certificates that you sign are not also able to sign additional certificates).  In summary, the two valid combination are \texttt{CA:TRUE, pathlen:0}, thus you may invite people by signing additional certificates, and \texttt{CA:FALSE}, thus you may not invite people.
-
-\subsection{Creating a CA}
-You must set up a special directory for your Certificate Authority; we'll use \texttt{\textasciitilde /irc/ca}.  Run the following series of commands:
+Read the command output in order to find out where the CSR for the referrer certificate is located, then send that request to me for signing.  Once (and "if") I send you the signed referrer certificate, then, assuming the signed certificate is located at \texttt{\textasciitilde /referrer.pem}, run the following command in order to install the referrer certificate:
 \begin{lstlisting}
-    $ mkdir ~/irc/ca
-    $ cd ~/irc/ca
-    $ mkdir certs crl csr newcerts
-    $ umask 0077
-    $ mkdir private
-    $ umask 0022
-    $ touch index.txt
-    $ echo 1000 > serial
-    $ echo 1000 > crlnumber
+    afrc receive-referrer ~/referrer.pem
 \end{lstlisting}
-You will also need to create an OpenSSL configuration file for your CA, please copy the file from Appendix \ref{appendix_a} into \texttt{\textasciitilde /irc/ca/openssl.cnf}.  The file is divided into square-bracket (\texttt{[]}) delimited \textit{sections}, of which a brief description is as follows: the \texttt{ca} section declares the default Certificate Authority section; the \texttt{ca\_default} section declares various attributes of a Certificate Authority; the \texttt{policy\_anything} section defines which fields of a certificate signing request must be specified in order for a CA to sign said request;  the \texttt{v3\_friend} section defines extensions that a signed certificate will have.
-
-Your CA directory will expect your client certificate and private key to be in certain locations, you may either move them there (and then update your IRC client's configuration appropriately) or create a symbolic link to their actual locations; the following command does the latter:
-\begin{lstlisting}
-    $ cd ~/irc/ca
-    $ ln ../yournick.pem certs/cert.pem
-    $ umask 0077
-    $ ln ../key.pem private/key.pem
-    $ umask 0022
-\end{lstlisting}
-Your Certificate Authority should now be set up, but keep in mind that you will need to remember to manually specify the configuration file when you are using it, as is done in the following subsection.
-
-\subsection{Creating a CRL}
-\label{crlsubsec}
-Although you have created your CA, you must first send the server a \textit{Certificate Revocation List} (CRL) file before it will accept any certificate that you sign for your friends.  Generating the CRL file can be done by running the following series of commands:
-\begin{lstlisting}
-	$ cd ~/irc/ca
-	$ openssl ca -gencrl -config openssl.cnf \
-		-cert certs/cert.pem \
-		-keyfile private/key.pem \
-		-out crl/crl.pem
-\end{lstlisting}
-Then send the file \texttt{crl/crl.pem} to me, the server admin, and I will reconfigure the server to use it.  Also, I must apologize for the convolution here, but OpenSSL requires each CA to have a valid CRL before it will verify certificates signed by that authority, even if said CA has not revoked any certificates.  What a pain!
+When you install the certificate, the relevant CRL will automatically be generated for you.  Read the command output and then be sure to send the CRL file to me, otherwise none of the users you invite will be able to connect!
 
 \subsection{Signing Friend's Certificates}
-In order to sign your friend's certificate, they must first create a \textit{certificate signing request} (csr), as explained earlier in this guide, and then send the signing request to you.  When you receive the signing request and place it in \texttt{\textasciitilde /irc/ca/csr/yourfriend.pem} (with \texttt{yourfriend.pem} replaced by the nick of your friend), you should first verify that it is of the appropriate key \textit{length} and has the correct \textit{Common Name} before signing it by running:
+In order to sign your friend's certificate, your friend must first create a \textit{certificate signing request} (CSR), as explained earlier in this guide, and then send the signing request to you.  When you receive the signing request, then, assuming the request is in the file \texttt{\textasciitilde /csr.pem}, you should first verify that it is of the appropriate key \textit{length} and has the correct \textit{Common Name} before signing it by running:
 \begin{lstlisting}
-    $ openssl req -in ~/irc/ca/csr/yourfriend.pem \
-        -text -noout
+    $ openssl req -in ~/csr.pem -text -noout
 \end{lstlisting}
 \ldots and making sure that the ``Public-Key'' reads \texttt{4096 bit} (and not, say, \texttt{2048 bit} or lower) and that the ``Subject'' line reads something akin to \texttt{Subject: CN=yourfriend}\footnote{Note that key lengths below \texttt{4096} \textit{may} be accepted by the server as-is, but are not supported and may break at any time, as weak crypto will be deprecated today and not tomorrow.}.
 
-Now that you've verified the certificate signing request, you may sign the certificate using your Certificate Authority by running the following commands:
+Now that you've verified the certificate signing request, you may sign the certificate by running the following command with \texttt{NAME} replaced by a name with which to refer to your friend with:
 \begin{lstlisting}
-    $ cd ~/irc/ca
-    $ openssl ca -config openssl.cnf \
-        -extensions v3_friend \
-        -in csr/yourfriend.pem \
-        -out certs/yourfriend.pem
+    $ afrc sign-referred ~/csr.pem NAME
 \end{lstlisting}
-The \texttt{-extensions v3\_friend} tells OpenSSL to use the X509v3 extensions with the label \texttt{v3\_friend}, which is in the \texttt{openssl.cnf} file as specified by \texttt{-config openssl.cnf}.  The arguments which specify the input certificate signing request and the output client certificate should be self-explanatory.  You may wish to verify the output client certificate by running \texttt{openssl x509 -in certs/yourfriend.pem -text -noout}; the output certificate should have a long expiration time (for your and their convenience), and also have a 4096-bit length key and be signed with SHA-512 and not, say, SHA-256\footnote{Check the \texttt{Signature Algorithm} line in the certificate, and note that, although it may work with SHA-256 initially, weak crypto will be deprecated today and not tomorrow.} (your configuration file should guarantee this).
-
-Then all you need to do is send your friend their signed client certificate (at \texttt{\textasciitilde /irc/ca/certs/yourfriend.pem}), and they will be able to connect!
+Then all you need to do is read the command output in order to find the signed certificate and then send your friend their signed client certificate!
 
 \subsection{Revoking a Friend's Certificate}
-In the unfortunate event that you need to revoke a friend's certificate, it may be done by running the following commands, where \texttt{yourfriend} is replaced with the name of the friend whose certificate you are revoking:
+In the unfortunate event that you need to revoke a friend's certificate, it may be done by running the following command, where \texttt{NAME} is replaced with the name of the friend whose certificate you are revoking:
 \begin{lstlisting}
-	$ cd ~/irc/ca
-	$ openssl ca -config openssl.cnf \
-		-cert certs/cert.pem \
-		-keyfile private/key.pem \
-		-revoke certs/yourfriend.pem
+	$ afrc revoke-referred NAME
 \end{lstlisting}
-Although you have revoked your friend's certificate, you must now inform the server by updating the CRL file and sending the updated CRL file to me.  Update the CRL file and send it to me as in section \ref{crlsubsec}.  You will have then completed revoking your (possibly former) friend's certificate.
+Although you have revoked your friend's certificate, you must now inform the server by sending the updated CRL file to me (the admin); the command output will tell you where to find the CRL file.  You will have then completed revoking your (possibly former) friend's certificate.  Beware: this action cannot be undone.
 
-\pagebreak
-\appendix
-\section{OpenSSL CA Configuration File}
-\label{appendix_a}
-You may also find this file included in the repository containing these instructions\footnote{\texttt{https://github.com/clinew/frostsnow.net} at the time of this writing.}.
-\lstinputlisting[basicstyle=\scriptsize\ttfamily]{openssl.cnf}
+\section{Migrating from friend-of-friend}
+This guide prior to mid-2020 used a Public Key Infrastructure (PKI) which I called ``Friend-of-Friend''; that was essentialy version 0.1 of what I now call ``Admin, Friend, Referrer'' version 0.2.  This was done in order to address several potential security issues with the old vesion.  As a result, the old server certificates and client certificates will need to be migrated away from.
+
+Thankfully, due to the wonders of certificate validation, it is possible to configure the server such that clients which trust either the old or new root server certificate will trust the server and also both old and new client certificates will be trusted by the server!  However, it is not desireable to maintain this state of affairs indefinitely due to the potential security issues, thus you will need to migrate to the new root server and client certificate.
+
+While it is possible to use your old private key in order to generate a new client certificate, it'll be easiest to follow the above instructions from the beginning and get rid of your old client certificate and the old root server certificate.
 
 \end{document}
